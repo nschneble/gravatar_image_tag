@@ -2,110 +2,161 @@ require File.dirname(__FILE__) + '/test_helper'
 
 require 'gravatar_image_tag'
 
-ActionView::Base.send(:include, GravatarImageTag)
+RSpec.describe GravatarImageTag do
+  let(:email) { 'mdeering@mdeering.com' }
+  let(:md5) { '4da9ad2bd4a2d1ce3c428e32c423588a' }
+  let(:default_filetype) { :gif }
+  let(:default_image) { 'http://mdeering.com/images/default_gravatar.png' }
+  let(:default_image_escaped) { 'http%3A%2F%2Fmdeering.com%2Fimages%2Fdefault_gravatar.png' }
+  let(:default_rating) { 'x' }
+  let(:default_size) { 50 }
+  let(:other_image) { 'http://mdeering.com/images/other_gravatar.png' }
+  let(:other_image_escaped) { 'http%3A%2F%2Fmdeering.com%2Fimages%2Fother_gravatar.png' }
+  let(:secure) { false }
 
-describe GravatarImageTag do
+  let(:view) do
+    ActionView::Base.new(ActionView::LookupContext.new([]), {}, nil)
+  end
 
-  email                 = 'mdeering@mdeering.com'
-  md5                   = '4da9ad2bd4a2d1ce3c428e32c423588a'
-  default_filetype      = :gif
-  default_image         = 'http://mdeering.com/images/default_gravatar.png'
-  default_image_escaped = 'http%3A%2F%2Fmdeering.com%2Fimages%2Fdefault_gravatar.png'
-  default_rating        = 'x'
-  default_size          = 50
-  other_image           = 'http://mdeering.com/images/other_gravatar.png'
-  other_image_escaped   = 'http%3A%2F%2Fmdeering.com%2Fimages%2Fother_gravatar.png'
-  secure                = false
+  around do |example|
+    original_config = GravatarImageTag.configuration
+    GravatarImageTag.configuration = GravatarImageTag::Configuration.new
+    example.run
+  ensure
+    GravatarImageTag.configuration = original_config
+  end
 
-  view = ActionView::Base.new
+  before do
+    ActionView::Base.send(:include, GravatarImageTag)
+    GravatarImageTag.configure do |c|
+      c.default_image = default_image
+      c.filetype = default_filetype
+      c.rating = default_rating
+      c.size = default_size
+      c.secure = secure
+      c.include_size_attributes = true
+    end
+  end
 
   context '#gravatar_image_tag' do
 
-    {
-      { gravatar_id: md5 } => {},
-      { gravatar_id: md5 } => { gravatar: { rating: 'x' } },
-      { gravatar_id: md5, size: 30 } => { gravatar: { size: 30 } },
-      { gravatar_id: md5, default: other_image_escaped } => { gravatar: { default: other_image } },
-      { gravatar_id: md5, default: other_image_escaped, size: 30 } => { gravatar: { default: other_image, size: 30 } }
-    }.each do |params, options|
-      it "#gravatar_image_tag should create the provided url with the provided options #{options}" do
-        view = ActionView::Base.new
+    let(:tag_cases) do
+      [
+        { params: { gravatar_id: md5 }, options: {} },
+        { params: { gravatar_id: md5 }, options: { gravatar: { rating: 'x' } } },
+        { params: { gravatar_id: md5, size: 30 }, options: { gravatar: { size: 30 } } },
+        { params: { gravatar_id: md5, default: other_image_escaped }, options: { gravatar: { default: other_image } } },
+        { params: { gravatar_id: md5, default: other_image_escaped, size: 30 }, options: { gravatar: { default: other_image, size: 30 } } }
+      ]
+    end
+
+    it 'creates the provided url with the provided options' do
+      tag_cases.each do |test_case|
+        params = test_case.fetch(:params).dup
+        options = test_case.fetch(:options)
         image_tag = view.gravatar_image_tag(email, options)
-        expect(image_tag.include?("#{params.delete(:gravatar_id)}")).to be_truthy
-        expect(params.all? {|key, value| image_tag.include?("#{key}=#{value}")}).to be_truthy
+
+        expect(image_tag).to include(params.delete(:gravatar_id).to_s)
+        params.each do |key, value|
+          expect(image_tag).to include("#{key}=#{value}")
+        end
       end
     end
 
-    {
-      default_gravatar_image: default_image,
-      default_gravatar_filetype: default_filetype,
-      default_gravatar_rating: default_rating,
-      default_gravatar_size: default_size,
-      secure_gravatar: secure
-    }.each do |singleton_variable, value|
-      it "should give a deprication warning for assigning to #{singleton_variable} and passthrough to set the new variable" do
+    let(:deprecation_cases) do
+      {
+        default_gravatar_image: default_image,
+        default_gravatar_filetype: default_filetype,
+        default_gravatar_rating: default_rating,
+        default_gravatar_size: default_size,
+        secure_gravatar: secure
+      }
+    end
+
+    it 'warns when assigning deprecated configuration methods and sets new values' do
+      deprecation_cases.each do |singleton_variable, value|
         expect(ActionView::Base).to receive(:warn)
         ActionView::Base.send("#{singleton_variable}=", value)
-        GravatarImageTag.configuration.default_image == value if singleton_variable == :default_gravatar_image
-        GravatarImageTag.configuration.filetype      == value if singleton_variable == :default_gravatar_filetype
-        GravatarImageTag.configuration.rating        == value if singleton_variable == :default_gravatar_rating
-        GravatarImageTag.configuration.size          == value if singleton_variable == :default_gravatar_size
-        GravatarImageTag.configuration.secure        == value if singleton_variable == :secure_gravatar
+
+        case singleton_variable
+        when :default_gravatar_image
+          expect(GravatarImageTag.configuration.default_image).to eq(value)
+        when :default_gravatar_filetype
+          expect(GravatarImageTag.configuration.filetype).to eq(value)
+        when :default_gravatar_rating
+          expect(GravatarImageTag.configuration.rating).to eq(value)
+        when :default_gravatar_size
+          expect(GravatarImageTag.configuration.size).to eq(value)
+        when :secure_gravatar
+          expect(GravatarImageTag.configuration.secure).to eq(value)
+        end
       end
     end
 
-    # Now that the defaults are set...
-    {
-      { gravatar_id: md5, size: default_size, default: default_image_escaped } => {},
-      { gravatar_id: md5, size: 30, default: default_image_escaped } => { gravatar: { size: 30 } },
-      { gravatar_id: md5, size: default_size, default: other_image_escaped } => { gravatar: { default: other_image } },
-      { gravatar_id: md5, size: 30, default: other_image_escaped } => { gravatar: { default: other_image, size: 30 } },
-    }.each do |params, options|
-      it "#gravatar_image_tag #{params} should create the provided url when defaults have been set with the provided options #{options}"  do
-        view = ActionView::Base.new
+    let(:defaults_set_cases) do
+      [
+        { params: { gravatar_id: md5, size: default_size, default: default_image_escaped }, options: {} },
+        { params: { gravatar_id: md5, size: 30, default: default_image_escaped }, options: { gravatar: { size: 30 } } },
+        { params: { gravatar_id: md5, size: default_size, default: other_image_escaped }, options: { gravatar: { default: other_image } } },
+        { params: { gravatar_id: md5, size: 30, default: other_image_escaped }, options: { gravatar: { default: other_image, size: 30 } } }
+      ]
+    end
+
+    it 'creates the provided url when defaults have been set with the provided options' do
+      defaults_set_cases.each do |test_case|
+        params = test_case.fetch(:params).dup
+        options = test_case.fetch(:options)
         image_tag = view.gravatar_image_tag(email, options)
-        expect(image_tag.include?("#{params.delete(:gravatar_id)}.#{default_filetype}")).to be_truthy
-        expect(params.all? {|key, value| image_tag.include?("#{key}=#{value}")}).to be_truthy
+
+        expect(image_tag).to include("#{params.delete(:gravatar_id)}.#{default_filetype}")
+        params.each do |key, value|
+          expect(image_tag).to include("#{key}=#{value}")
+        end
       end
     end
 
-    it 'should request the gravatar image from the non-secure server when the https: false option is given' do
-      expect(!!view.gravatar_image_tag(email, { gravatar: { secure: false } }).match(/^https:\/\/secure.gravatar.com\/avatar\//)).to be_falsey
+    it 'requests the gravatar image from the non-secure server when the https: false option is given' do
+      image_tag = view.gravatar_image_tag(email, gravatar: { secure: false })
+      expect(image_tag).not_to match(%r{^https://secure\.gravatar\.com/avatar/})
     end
 
-    it 'should request the gravatar image from the secure server when the https: true option is given' do
-      expect(!!view.gravatar_image_tag(email, { gravatar: { secure: true } }).match(/src="https:\/\/secure.gravatar.com\/avatar\//)).to be_truthy
+    it 'requests the gravatar image from the secure server when the https: true option is given' do
+      image_tag = view.gravatar_image_tag(email, gravatar: { secure: true })
+      expect(image_tag).to match(%r{src="https://secure\.gravatar\.com/avatar/})
     end
 
-    it 'should set the image tags height and width to avoid the page going all jiggy (technical term) when loading a page with lots of Gravatars' do
+    it 'sets the image tags height and width to avoid layout shifts when loading many Gravatars' do
       GravatarImageTag.configure { |c| c.size = 30 }
-      expect(!!view.gravatar_image_tag(email).match(/height="30"/)).to be_truthy
-      expect(!!view.gravatar_image_tag(email).match(/width="30"/)).to  be_truthy
+      image_tag = view.gravatar_image_tag(email)
+      expect(image_tag).to match(/height="30"/)
+      expect(image_tag).to match(/width="30"/)
     end
 
-    it 'should set the image tags height and width attributes to 80px (gravatars default) if no size is given.' do
+    it 'sets the image tags height and width attributes to 80px (gravatar default) if no size is given' do
       GravatarImageTag.configure { |c| c.size = nil }
-      expect(!!view.gravatar_image_tag(email).match(/height="80"/)).to be_truthy
-      expect(!!view.gravatar_image_tag(email).match(/width="80"/)).to  be_truthy
+      image_tag = view.gravatar_image_tag(email)
+      expect(image_tag).to match(/height="80"/)
+      expect(image_tag).to match(/width="80"/)
     end
 
-    it 'should set the image tags height and width attributes from the overrides on the size' do
+    it 'sets the image tags height and width attributes from size overrides' do
       GravatarImageTag.configure { |c| c.size = 120 }
-      expect(!!view.gravatar_image_tag(email, gravatar: { size: 45 }).match(/height="45"/)).to be_truthy
-      expect(!!view.gravatar_image_tag(email, gravatar: { size: 75 }).match(/width="75"/)).to  be_truthy
+      expect(view.gravatar_image_tag(email, gravatar: { size: 45 })).to match(/height="45"/)
+      expect(view.gravatar_image_tag(email, gravatar: { size: 75 })).to match(/width="75"/)
     end
 
-    it 'should not include the height and width attributes on the image tag if it is turned off in the configuration' do
+    it 'does not include height and width attributes when disabled in configuration' do
       GravatarImageTag.configure { |c| c.include_size_attributes = false }
-      expect(!!view.gravatar_image_tag(email).match(/height=/)).to be_falsey
-      expect(!!view.gravatar_image_tag(email).match(/width=/)).to  be_falsey
+      image_tag = view.gravatar_image_tag(email)
+      expect(image_tag).not_to match(/height=/)
+      expect(image_tag).not_to match(/width=/)
     end
 
-    it 'GravatarImageTag#gravitar_id should not error out when email is nil' do
-      expect { GravatarImageTag::gravatar_id(nil) }.to_not raise_error
+    it 'does not error when email is nil for gravatar_id' do
+      expect { GravatarImageTag.send(:gravatar_id, nil) }.not_to raise_error
     end
 
-    it 'should normalize the email to Gravatar standards (http://en.gravatar.com/site/implement/hash/)' do
+    it 'normalizes the email to Gravatar standards (http://en.gravatar.com/site/implement/hash/)' do
       expect(view.gravatar_image_tag(" camelCaseEmail@example.com\t\n")).to eq(view.gravatar_image_tag('camelcaseemail@example.com'))
     end
 
@@ -113,36 +164,36 @@ describe GravatarImageTag do
 
   context '#gravatar_image_url' do
 
-    it '#gravatar_image_url should return a gravatar URL' do
-      expect(!!view.gravatar_image_url(email).match(/^http:\/\/gravatar.com\/avatar\//)).to be_truthy
+    it 'returns a gravatar URL' do
+      expect(view.gravatar_image_url(email)).to match(%r{^http://gravatar\.com/avatar/})
     end
 
-    it '#gravatar_image_url should set the email as an md5 digest' do
-      expect(!!view.gravatar_image_url(email).match("http:\/\/gravatar.com\/avatar\/#{md5}")).to be_truthy
+    it 'sets the email as an md5 digest' do
+      expect(view.gravatar_image_url(email)).to match(%r{http://gravatar\.com/avatar/#{md5}})
     end
 
-    it '#gravatar_image_url should set the default_image' do
-      expect(!!view.gravatar_image_url(email).include?("default=#{default_image_escaped}")).to be_truthy
+    it 'sets the default_image' do
+      expect(view.gravatar_image_url(email)).to include("default=#{default_image_escaped}")
     end
 
-    it '#gravatar_image_url should set the filetype' do
-      expect(!!view.gravatar_image_url(email, filetype: :png).match("http:\/\/gravatar.com\/avatar\/#{md5}.png")).to be_truthy
+    it 'sets the filetype' do
+      expect(view.gravatar_image_url(email, filetype: :png)).to match(%r{http://gravatar\.com/avatar/#{md5}\.png})
     end
 
-    it '#gravatar_image_url should set the rating' do
-      expect(!!view.gravatar_image_url(email, rating: 'pg').include?("rating=pg")).to be_truthy
+    it 'sets the rating' do
+      expect(view.gravatar_image_url(email, rating: 'pg')).to include('rating=pg')
     end
 
-    it '#gravatar_image_url should set the size' do
-      expect(!!view.gravatar_image_url(email, size: 100).match(/size=100/)).to be_truthy
+    it 'sets the size' do
+      expect(view.gravatar_image_url(email, size: 100)).to match(/size=100/)
     end
 
-    it '#gravatar_image_url should use http protocol when the https: false option is given' do
-      expect(!!view.gravatar_image_url(email, secure: false).match("^http:\/\/gravatar.com\/avatar\/")).to be_truthy
+    it 'uses http protocol when the https: false option is given' do
+      expect(view.gravatar_image_url(email, secure: false)).to match(%r{^http://gravatar\.com/avatar/})
     end
 
-    it '#gravatar_image_url should use https protocol when the https: true option is given' do
-      expect(!!view.gravatar_image_url(email, secure: true).match("^https:\/\/secure.gravatar.com\/avatar\/")).to be_truthy
+    it 'uses https protocol when the https: true option is given' do
+      expect(view.gravatar_image_url(email, secure: true)).to match(%r{^https://secure\.gravatar\.com/avatar/})
     end
 
   end

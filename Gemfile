@@ -6,14 +6,15 @@ rails = case rails_version
 when "master"
   {github: "rails/rails"}
 when "default"
-  "~> 3.2.0"
+  "~> 7.1.0"
 else
   "~> #{rails_version}"
 end
 
 group :development, :test do
   gem 'activesupport', rails
-  gem 'actionpack', rails
+  gem 'actionview', rails
+  gem 'rexml', '~> 3.2'
   gem 'rspec'
 end
 
